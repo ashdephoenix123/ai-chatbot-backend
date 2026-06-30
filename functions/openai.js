@@ -2,7 +2,7 @@ const { OpenAI } = require('openai');
 const { zodTextFormat } = require('openai/helpers/zod');
 const TravelPlanSchema = require('../schemas/travel_planner');
 const RestaurantSchema = require('../schemas/find_restaurant');
-const { get_weather_dummy } = require('./get_weather_dummy');
+const toolFunctions = require('./tools');
 
 const openai = new OpenAI({
     apiKey: process.env.OPENAI_API_KEY
@@ -114,10 +114,6 @@ const findRestaurants = async (req, res) => {
     }
 }
 
-const toolFunctions = {
-    get_weather_dummy
-}
-
 const toolCalling = async (req, res) => {
 
     const tools = [{
@@ -177,5 +173,77 @@ const toolCalling = async (req, res) => {
     }
 }
 
+const findEvents = async (req, res) => {
 
-module.exports = { isThisWorking, chatbot, travelPlanner, findRestaurants, toolCalling };
+    const eventTools = [{
+        type: 'function',
+        name: 'search_events',
+        description: 'Search events by city and optional category.',
+        parameters: {
+            type: 'object',
+            properties: {
+                city: {
+                    type: 'string',
+                    description: "City where the eent takes place."
+                },
+                category: {
+                    type: "string",
+                    description: "Optional category filter (e.g., music, food, sports)."
+                }
+            },
+            additionalProperties: false,
+            required: ['city']
+        }
+    }]
+
+    try {
+        const { message } = req.body;
+        if (!message) {
+            return res.status(400).json({ message: 'Message is required!' })
+        }
+        const response = await openai.responses.create({
+            ...openaiConfig,
+            input: message,
+            instructions: "You are an events curator. Use the search_events tool whenever the user wants to find events. If the city is missing, ask the user for it before calling the tool. If a category is provided, include it in the tool arguments.",
+            tools: eventTools
+        })
+
+        const toolCall = response.output.find(event => event.type === 'function_call');
+
+        if (toolCall) {
+
+            const args = JSON.parse(toolCall.arguments);
+            const tool = toolFunctions[toolCall.name];
+
+            if (!tool) {
+                throw new Error(`Unknown tool: ${toolCall.name}`);
+            }
+
+            const result = await tool(args);
+
+            const finalResponse = await openai.responses.create({
+                ...openaiConfig,
+                previous_response_id: response.id,
+                input: [{
+                    type: 'function_call_output',
+                    call_id: toolCall.call_id,
+                    output: JSON.stringify(result)
+                }]
+            })
+
+            res.status(200).json({ message: finalResponse.output_text })
+
+
+        } else {
+            res.status(200).json({ message: response.output_text })
+        }
+
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: error.message })
+    }
+}
+
+
+module.exports = { isThisWorking, chatbot, travelPlanner, findRestaurants, toolCalling, findEvents };

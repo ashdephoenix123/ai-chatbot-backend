@@ -21,21 +21,29 @@ app.get('/', (req, res) => {
 app.post('/chat', async (req, res) => {
     try {
         const { message, previousResponseId } = req.body;
-        const payload = {
+        const stream = await openai.responses.create({
             model: 'gpt-5.5',
-            instructions: "You are Nova, an AI assistant. User can ask you anything, Answer hilariously.",
+            instructions: "You are Nova, an AI assistant. User can ask you anything, Answer hilariously under 100 words.",
             input: message,
-            ...(previousResponseId ? { previous_response_id: previousResponseId } : {})
-        };
+            stream: true,
+            ...(previousResponseId && { previous_response_id: previousResponseId })
+        });
 
-        console.log("payload", payload)
-
-        const stream = await openai.responses.stream(payload);
-        res.setHeader('Content-Type', "text/plain; charset=utf-8");
+        res.setHeader('Content-Type', "text/event-stream");
+        res.setHeader('Cache-Control', "no-cache")
+        res.setHeader("Connection", 'Keep-alive')
 
         for await (const event of stream) {
-            if (event.type === 'response.output_text.delta') {
-                res.write(event.delta)
+            switch (event.type) {
+                case 'response.output_text.delta':
+                    res.write(`event: delta\ndata: ${JSON.stringify(event.delta)}\n\n`);
+                    break;
+
+                case 'response.completed':
+                    res.write(`event: done\ndata: ${JSON.stringify({
+                        responseId: event.response.id
+                    })}\n\n`);
+                    break;
             }
         }
         res.end();

@@ -33,6 +33,8 @@ app.post('/chat', async (req, res) => {
         res.setHeader('Cache-Control', "no-cache")
         res.setHeader("Connection", 'Keep-alive')
 
+        res.flushHeaders?.();
+
         for await (const event of stream) {
             switch (event.type) {
                 case 'response.output_text.delta':
@@ -52,6 +54,9 @@ app.post('/chat', async (req, res) => {
         if (!res.headersSent) {
             res.status(500).json({ error: 'Something went wrong.' });
         } else {
+            res.write(`event: error\ndata: ${JSON.stringify({
+                message: 'Something went wrong here!'
+            })}\n\n`)
             res.end()
         }
 

@@ -72,7 +72,7 @@ const travelPlanner = async (req, res) => {
             input: [
                 {
                     role: 'developer',
-                    content: "You are an AI travel itinary generator. User will ask you for travel plans. You should return a travel plan based on their input."
+                    content: "You are an AI travel itinary generator. User will ask you for travel plans. You should return a travel plan based on their input. If user asks other then that you can only help in generating travel itinary."
                 },
                 {
                     role: 'user',

@@ -17,11 +17,11 @@ const TravelPlanSchema = z.object({
         })
     ),
 
-    hotels: z.object({
+    hotels: z.array(z.object({
         stars: z.number().min(1).max(5),
         price: z.number().positive(),
         name: z.string().min(2),
-    }),
+    })),
 
     packingList: z.array(z.string()),
 

@@ -118,7 +118,7 @@ const toolCalling = async (req, res) => {
 
     const tools = [{
         type: 'function',
-        name: 'get_weather_dummy',
+        name: 'get_weather',
         description: 'Get current weather for a city.',
         parameters: {
             type: 'object',
@@ -149,7 +149,10 @@ const toolCalling = async (req, res) => {
 
         if (output.type === 'function_call') {
             const args = JSON.parse(output.arguments)
-            const result = await toolFunctions[output.name](args.city)
+            const result = await toolFunctions[output.name](args.city);
+            if (!result) {
+                throw new Error("Function execution failed!")
+            }
 
             const finalResponse = await openai.responses.create({
                 ...openaiConfig,
@@ -184,7 +187,7 @@ const findEvents = async (req, res) => {
             properties: {
                 city: {
                     type: 'string',
-                    description: "City where the eent takes place."
+                    description: "City where the event takes place."
                 },
                 category: {
                     type: "string",
@@ -245,5 +248,296 @@ const findEvents = async (req, res) => {
     }
 }
 
+const oneToolCallfromMultiple = async (req, res) => {
 
-module.exports = { isThisWorking, chatbot, travelPlanner, findRestaurants, toolCalling, findEvents };
+    const multipleTools = [{
+        type: 'function',
+        name: 'get_weather',
+        description: 'Get weather of the given city.',
+        parameters: {
+            type: 'object',
+            properties: {
+                city: {
+                    type: 'string',
+                    description: 'name of the city whose weather we need to get.'
+                }
+            },
+            required: ['city'],
+            additionalProperties: false
+        }
+    },
+    {
+        type: 'function',
+        name: 'search_events',
+        description: 'Search for events for a given city.',
+        parameters: {
+            type: 'object',
+            properties: {
+                city: {
+                    type: 'string',
+                    description: 'name of the city whose events we need to get.'
+                },
+                category: {
+                    type: 'string',
+                    description: 'Categories like Music, Food, etc.'
+                }
+            },
+            required: ['city'],
+            additionalProperties: false
+        }
+    }]
+
+    try {
+        const { message } = req.body;
+        if (!message) {
+            return res.status(400).json({ message: 'Message is required!' })
+        }
+
+        const response = await openai.responses.create({
+            ...openaiConfig,
+            input: message,
+            tools: multipleTools
+        })
+
+        const toolCall = response.output.find(ev => ev.type === 'function_call')
+        if (toolCall) {
+            const args = JSON.parse(toolCall.arguments);
+            const tool = toolFunctions[toolCall.name];
+
+            if (!tool) {
+                throw new Error(`Unknown tool: ${toolCall.name}`)
+            }
+
+            const result = await tool(args);
+            const finalresponse = await openai.responses.create({
+                ...openaiConfig,
+                previous_response_id: response.id,
+                input: [{
+                    type: 'function_call_output',
+                    call_id: toolCall.call_id,
+                    output: JSON.stringify(result)
+                }]
+            })
+
+            res.status(200).json({ message: finalresponse.output_text })
+        }
+        else {
+            res.status(200).json({ message: response.output_text })
+        }
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: error.message })
+    }
+}
+
+const bookEventToolChaining = async (req, res) => {
+    const multipleTools = [
+        {
+            type: 'function',
+            name: 'search_events',
+            description: 'Search for events for a given city.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    city: {
+                        type: 'string',
+                        description: 'name of the city whose events we need to get.'
+                    },
+                    category: {
+                        type: 'string',
+                        description: 'Categories like Music, Food, etc.'
+                    }
+                },
+                required: ['city'],
+                additionalProperties: false
+            }
+        },
+        {
+            type: 'function',
+            name: 'book_tickets',
+            description: 'book tickets for an event',
+            parameters: {
+                type: 'object',
+                properties: {
+                    event_id: {
+                        type: 'string',
+                        description: 'Unique identifier of the event for which tickets are to be booked.'
+                    },
+                    quantity: {
+                        type: 'integer',
+                        description: 'number of tickets to be booked.'
+                    }
+                },
+                additionalProperties: false,
+                required: ['event_id', 'quantity']
+            }
+        }]
+
+    try {
+        const { message } = req.body;
+        if (!message) {
+            return res.status(400).json({ message: 'Message is required!' })
+        }
+
+        let response = await openai.responses.create({
+            ...openaiConfig,
+            input: message,
+            tools: multipleTools
+        })
+
+        let count = 0;
+        const MAX_TOOL_CALLS = 10;
+
+        while (count < MAX_TOOL_CALLS) {
+            const toolCall = response.output.find(ev => ev.type === 'function_call')
+            if (!toolCall) break;
+
+            const args = JSON.parse(toolCall.arguments);
+            const tool = toolFunctions[toolCall.name];
+
+            if (!tool) {
+                throw new Error(`Unknown tool: ${toolCall.name}`)
+            }
+
+            const result = await tool(args);
+            response = await openai.responses.create({
+                ...openaiConfig,
+                previous_response_id: response.id,
+                input: [{
+                    type: 'function_call_output',
+                    call_id: toolCall.call_id,
+                    output: JSON.stringify(result)
+                }],
+                tools: multipleTools
+            })
+            count++;
+        }
+
+        if (count === MAX_TOOL_CALLS) {
+            throw new Error("Maximum tool calls exceeded.");
+        }
+
+        res.status(200).json({ message: response.output_text })
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: error.message })
+    }
+}
+
+const bookEventParallelToolChaining = async (req, res) => {
+    const multipleTools = [
+        {
+            type: 'function',
+            name: 'get_weather',
+            description: 'Get weather of a city',
+            parameters: {
+                type: 'object',
+                properties: {
+                    city: {
+                        type: 'string',
+                        description: 'name of the city whose weather we need to fetch.'
+                    }
+                },
+                required: ['city'],
+                additionalProperties: false
+            }
+        },
+        {
+            type: 'function',
+            name: 'search_events',
+            description: 'Search for events for a given city.',
+            parameters: {
+                type: 'object',
+                properties: {
+                    city: {
+                        type: 'string',
+                        description: 'name of the city whose events we need to get.'
+                    },
+                    category: {
+                        type: 'string',
+                        description: 'Categories like Music, Food, etc.'
+                    }
+                },
+                required: ['city'],
+                additionalProperties: false
+            }
+        },
+        {
+            type: 'function',
+            name: 'book_tickets',
+            description: 'book tickets for an event',
+            parameters: {
+                type: 'object',
+                properties: {
+                    event_id: {
+                        type: 'string',
+                        description: 'Unique identifier of the event for which tickets are to be booked.'
+                    },
+                    quantity: {
+                        type: 'integer',
+                        description: 'number of tickets to be booked.'
+                    }
+                },
+                additionalProperties: false,
+                required: ['event_id', 'quantity']
+            }
+        }]
+
+    try {
+        const { message } = req.body;
+        if (!message) {
+            return res.status(400).json({ message: 'Message is required!' })
+        }
+
+        let response = await openai.responses.create({
+            ...openaiConfig,
+            input: message,
+            tools: multipleTools
+        })
+
+        let count = 0;
+        const MAX_TOOL_CALLS = 10;
+
+        while (count < MAX_TOOL_CALLS) {
+            const toolCalls = response.output.filter(ev => ev.type === 'function_call')
+            if (!toolCalls.length) break;
+
+            const outputs = await Promise.all(toolCalls.map(async toolCall => { // we could use allSettled
+                const args = JSON.parse(toolCall.arguments);
+                const tool = toolFunctions[toolCall.name];
+                if (!tool) {
+                    throw new Error(`Unknown tool: ${toolCall.name}`);
+                }
+                const result = await tool(args);
+
+                return {
+                    type: 'function_call_output',
+                    call_id: toolCall.call_id,
+                    output: JSON.stringify(result)
+                }
+            }))
+
+            response = await openai.responses.create({
+                ...openaiConfig,
+                previous_response_id: response.id,
+                input: outputs,
+                tools: multipleTools
+            })
+            count++;
+        }
+
+        if (count === MAX_TOOL_CALLS) {
+            throw new Error("Maximum tool calls exceeded.");
+        }
+
+        res.status(200).json({ message: response.output_text })
+
+    } catch (error) {
+        console.error(error)
+        res.status(500).json({ message: error.message })
+    }
+}
+
+module.exports = { isThisWorking, chatbot, travelPlanner, findRestaurants, toolCalling, findEvents, oneToolCallfromMultiple, bookEventToolChaining, bookEventParallelToolChaining };

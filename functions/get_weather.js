@@ -1,15 +1,5 @@
-const get_weather_dummy = (city) => {
-    return {
-        city,
-        temperature: 31,
-        unit: 'celsius',
-        condition: 'Hot and humid'
-    }
-}
-
-const get_weather = async (city) => {
+const get_weather = async ({ city }) => {
     const url = `https://api.openweathermap.org/data/2.5/weather?q=${encodeURIComponent(city)}&appid=${process.env.OPEN_WEATHER_API_KEY}&units=metric`;
-
     try {
         const response = await fetch(url);
 
@@ -34,4 +24,4 @@ const get_weather = async (city) => {
     }
 }
 
-module.exports = { get_weather_dummy, get_weather }
+module.exports = { get_weather }

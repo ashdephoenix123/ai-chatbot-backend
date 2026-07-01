@@ -1,12 +1,8 @@
-const { OpenAI } = require('openai');
+const { openai } = require('../globals');
 const { zodTextFormat } = require('openai/helpers/zod');
 const TravelPlanSchema = require('../schemas/travel_planner');
 const RestaurantSchema = require('../schemas/find_restaurant');
 const toolFunctions = require('./tools');
-
-const openai = new OpenAI({
-    apiKey: process.env.OPENAI_API_KEY
-})
 
 const openaiConfig = {
     model: 'gpt-5.5'

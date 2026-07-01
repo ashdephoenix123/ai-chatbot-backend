@@ -2,6 +2,7 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { chatbot, isThisWorking, travelPlanner, findRestaurants, toolCalling, findEvents, oneToolCallfromMultiple, bookEventToolChaining, bookEventParallelToolChaining } = require('./functions/openai');
+const { generateEmbeddings } = require('./functions/rag');
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -20,6 +21,8 @@ app.post('/ai/find-events', findEvents)
 app.post('/ai/multiple-tool-call', oneToolCallfromMultiple)
 app.post('/ai/find-and-book-event', bookEventToolChaining)
 app.post('/ai/find-and-book-event-in-parallel', bookEventParallelToolChaining)
+
+app.post('/rag/generate-embeddings', generateEmbeddings)
 
 
 app.listen(port, () => {

@@ -2,7 +2,12 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const { chatbot, isThisWorking, travelPlanner, findRestaurants, toolCalling, findEvents, oneToolCallfromMultiple, bookEventToolChaining, bookEventParallelToolChaining } = require('./functions/openai');
-const { generateEmbeddings } = require('./functions/rag');
+const { generateEmbeddings, pdfParse, ragSearch } = require('./functions/rag');
+const multer = require('multer')
+
+const upload = multer({
+    storage: multer.memoryStorage()
+})
 
 const app = express();
 const port = process.env.PORT || 3000;
@@ -23,6 +28,8 @@ app.post('/ai/find-and-book-event', bookEventToolChaining)
 app.post('/ai/find-and-book-event-in-parallel', bookEventParallelToolChaining)
 
 app.post('/rag/generate-embeddings', generateEmbeddings)
+app.post('/rag/search', ragSearch)
+app.post('/rag/parse-pdf', upload.single('file'), pdfParse)
 
 
 app.listen(port, () => {
